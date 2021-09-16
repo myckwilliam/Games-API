@@ -1,7 +1,11 @@
 const express = require('express')
 const cors = require('cors')
+const jwt = require("jsonwebtoken")
 const res = require('express/lib/response')
+const req = require('express/lib/request')
 const app = express()
+
+const JWTSecret = "fddwenfwldcnsedefwejjjdfiefwefw"
 
 //Used to work with JSON
 app.use(express.json())
@@ -29,14 +33,51 @@ const db = {
             year: 2010,
             price: 0
         },
+    ],
+
+    users: [
+        {
+            id: 1,
+            name: "Ejs",
+            email: "ejs@dwd.com",
+            password: "ejs123"
+        },
+        {
+            id: 20,
+            name: "Java",
+            email: "java@dwd.com",
+            password: "java123"
+        }
     ]
 }
 
-app.get('/games', (request, response) => {
-    response.status(200).json(db.games)
+function auth(request, response, next){
+    const authToken = request.headers['authorization']
+
+    if(authToken != undefined){
+        const bearer = authToken.split(' ')
+        const token = bearer[1]
+
+        jwt.verify(token, JWTSecret, (error, data)=> {
+            if (error){
+                response.status(401).json({error: "Invalid token."})
+            }else{
+                request.token = token;
+                request.loggedUser = {id: data.id, email: data.email}
+
+                next()
+            }
+        })
+    }else{
+        response.status(400).json({error: "Invalid token."})
+    }
+}
+
+app.get('/games', auth, (request, response) => {
+    response.status(200).json({user: request.loggedUser, games: db.games})
 })
 
-app.get('/games/:id', (request, response) => {
+app.get('/games/:id', auth, (request, response) => {
     const id = parseInt(request.params.id);
     if(isNaN(request.params.id)){
         response.status(400).send('ID is not a number')
@@ -51,7 +92,7 @@ app.get('/games/:id', (request, response) => {
 
 })
 
-app.post('/games', (request, response) => {
+app.post('/games', auth,  (request, response) => {
     const {id, name, year, price} = request.body;
     const game = {
         id: id,
@@ -66,7 +107,7 @@ app.post('/games', (request, response) => {
 
 
 
-app.put('/games/:id', (request, response) => {
+app.put('/games/:id', auth, (request, response) => {
     const id = request.params.id;
     const {name, year, price} = request.body;
 
@@ -84,7 +125,7 @@ app.put('/games/:id', (request, response) => {
     }
 })
 
-app.delete('/games/:id', (request, response) => {
+app.delete('/games/:id', auth,  (request, response) => {
     const id = request.params.id;
     const {name, year, price} = request.body;
 
@@ -102,6 +143,27 @@ app.delete('/games/:id', (request, response) => {
     }
 })
 
+
+app.post('/auth', (request, response) => {
+    const {email, password} = request.body;
+    const user = db.users.find(user => user.email == email)
+    if(user != undefined){
+        if (user.password == password){
+            jwt.sign({id: user.id, email: user.email}, JWTSecret, {expiresIn: "48h"}, (error, token)=> {
+                if(error){
+                    response.status(500).json({error: "Internal fail!"})
+                }else {
+                    response.status(200).json({token: token})
+                }
+            })
+
+        }else {
+            response.status(400).json({error: "Invalid Password."})
+        }
+    }else {
+        response.status(404).json({error: "User not found."})
+    }
+})
 
 
 //PORT that the API is running
